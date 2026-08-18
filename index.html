@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLOW FLOW</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: #0f1117;
+      color: #f3f4f6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: #1a1d24;
+      padding: 1rem 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #2d333b;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      color: #38bdf8;
+      text-transform: uppercase;
+    }
+
+    nav ul {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+      flex-wrap: wrap;
+    }
+
+    nav a {
+      color: #9ca3af;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    nav a:hover {
+      color: #38bdf8;
+    }
+
+    main {
+      flex: 1;
+      padding: 3rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    main h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    main p {
+      color: #9ca3af;
+      max-width: 600px;
+    }
+
+    @media (max-width: 600px) {
+      header {
+        flex-direction: column;
+        gap: 1rem;
+      }
+      nav ul {
+        justify-content: center;
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">GLOW FLOW</div>
+    <nav>
+      <ul>
+        <li><a href="#menu1">Menu 1</a></li>
+        <li><a href="#menu2">Menu 2</a></li>
+        <li><a href="#menu3">Menu 3</a></li>
+        <li><a href="#menu4">Menu 4</a></li>
+        <li><a href="#menu5">Menu 5</a></li>
+        <li><a href="#menu6">zoy el zomby</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Bienvenido a GLOW FLOW</h1>
+    <p>Estructura base lista y enlazada para GitHub Pages.
+    Dale tu corte oeeeee</p>
+  </main>
+
+</body>
+</html>
