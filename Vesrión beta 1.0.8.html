@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>Bastián Jiménez — Diseño 3D</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ================================================
+   TOKENS Y BASE - Paleta de colores y valores globales
+   Define variables CSS para mantener consistencia de colores
+   y proporciones en toda la página
+   ================================================ */
+:root {
+  --negro:   #111827;     /* Color de fondo principal (oscuro) */
+  --petroleo:#0F4C5C;     /* Color primario (azul-verdoso) */
+  --plata:   #9CA3AF;     /* Color de texto secundario (gris) */
+  --blanco:  #F8FAFC;     /* Color de texto principal (blanco) */   
+
+  --col-txt: 55%;  /* Proporción del ancho para el panel de texto (escritorio) */
+  --col-obj: 45%;  /* Proporción del ancho para el objeto 3D (escritorio) */
+}
+
+/* Resetea márgenes y padding de todos los elementos */
+/* 🧙‍♂️ WIZZARD DICE: El selector universal (*) con box-sizing: border-box es el escudo definitivo. Evita que los bordes y paddings sumen tamaño extra a tus cajas y te rompan el layout. */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+/* Configuración base: pantalla completa con fondo de malla técnica */
+html, body {
+  width:100%; height:100%;
+  overflow:hidden;  /* Evita scrollbars indeseados */
+  font-family:'Montserrat', sans-serif;
+  color:var(--blanco);
+  background-color:var(--negro);  
+  /* Patrón de grid técnico (malla pequeña + malla grande) */  
+  background-image:
+    linear-gradient(rgba(15,76,92,.42) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,76,92,.42) 1px, transparent 1px),
+    linear-gradient(rgba(15,76,92,.78) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,76,92,.78) 1px, transparent 1px);
+  background-size: 8px 8px, 8px 8px, 40px 40px, 40px 40px;
+}
+
+/* ================================================
+   CANVAS Y TACTICAL OVERLAYS
+   Contiene el renderizado 3D y efectos visuales decorativos
+   ================================================ */
+/* Canvas de Three.js donde se renderiza el objeto 3D */
+#scene-canvas {
+  /* 🧙‍♂️ WIZZARD DICE: inset: 0 es hechicería moderna. Es lo mismo que escribir top: 0; right: 0; bottom: 0; left: 0; pero en una sola palabra. Ahorra tiempo, mano mío. */
+  position:fixed; inset:0;
+  width:100%; height:100%;
+  /* 🧙‍♂️ WIZZARD DICE: pointer-events: none hace que este elemento sea un fantasma. Los clicks lo traspasan y le dan a lo que esté debajo (botones, textos). Sin esto, tu canvas 3D bloquearía toda la página. */
+  pointer-events:none;  /* No interfiere con eventos del usuario */
+  z-index:2;
+}
+
+/* Efecto de viñeta: oscurece los bordes de la pantalla */
+.vignette {
+  position:fixed; inset:0; z-index:3; pointer-events:none;
+  background:radial-gradient(ellipse at 28% 52%, transparent 250%, rgba(39, 17, 27, 0.65) 100%);
+}
+
+/* Scanline effect: línea horizontal que baja continuamente (efecto CRT) */
+.scanline {
+  position:fixed; left:0; right:0; top:0;
+  height:2px;
+  background:linear-gradient(90deg, transparent, rgba(156,163,175,.45), transparent);
+  opacity:.6;
+  pointer-events:none;
+  z-index:4;
+  animation:scan 8s linear infinite;  
+}
+@keyframes scan {
+  0% { transform:translateY(-10px); }
+  100% { transform:translateY(100vh); }
+}
+
+/* Elementos HUD: esquinas decorativas (efecto de visor técnico) */
+.hud {
+  position:fixed; width:26px; height:26px;
+  z-index:6; pointer-events:none;
+  border-color:rgba(156,163,175,.35);
+  border-style:solid;
+}
+/* Posicionamiento de cada esquina */
+.hud.tl { top:16px; left:16px;  border-width:1.5px 0 0 1.5px; }   
+.hud.tr { top:16px; right:16px; border-width:1.5px 1.5px 0 0; }  
+.hud.bl { bottom:16px; left:16px;  border-width:0 0 1.5px 1.5px; } 
+.hud.br { bottom:16px; right:16px; border-width:0 1.5px 1.5px 0; } 
+
+/* Contenedor de efectos glitch/distorsión (Se activa al cambiar secciones) */
+#glitch-container {
+  position: fixed; inset: 0; z-index: 10;
+  pointer-events: none; overflow: hidden;
+}
+/* Bloques de glitch: rectángulos que aparecen y desaparecen animadamente */
+.glitch-block {
+  position: absolute;
+  background-color: rgba(15,76,92,.14);
+  opacity: 0.28;
+  pointer-events: none;
+  /* 🧙‍♂️ WIZZARD DICE: mix-blend-mode: screen funciona igual que las capas en "Modo Trama" de Photoshop. Los colores oscuros se vuelven transparentes y los claros iluminan lo que hay de fondo. */
+  mix-blend-mode: screen;
+  filter: blur(1px);
+  border-radius: 4px;
+}
+.glitch-block::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.06) 0%, transparent 45%, rgba(255,255,255,.06) 100%);
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+@keyframes fade {
+  0% { opacity: 0.05; transform: translate3d(0,0,0) skewX(0deg); }
+  25% { opacity: 0.27; transform: translate3d(-3px,1px,0) skewX(6deg); }
+  50% { opacity: 0.16; transform: translate3d(2px,-2px,0) skewX(-4deg); }
+  75% { opacity: 0.22; transform: translate3d(-1px,1px,0) skewX(4deg); }
+  100% { opacity: 0; transform: translate3d(0,0,0) skewX(0deg); }
+}
+
+/* ================================================
+   HEADER Y NAVEGACIÓN SUPERIOR GLOBAL
+   Barra fija superior con logo, menú y botones principales
+   ================================================ */
+/* Header: contiene marca y navegación */
+header {
+  position:fixed; top:0; left:0; right:0;
+  padding:22px 30px;
+  display:flex; flex-direction: column; align-items:flex-start;
+  z-index:9; pointer-events:none;  /* No bloquea interacciones por defecto */
+}
+
+.brand {
+  /* 🧙‍♂️ WIZZARD DICE: clamp(mínimo, ideal, máximo) es el santo grial del diseño adaptable. El texto nunca será más chico que 0.9rem ni más grande que 1.15rem, y en el medio crecerá según el tamaño de la ventana (1.8vw). Ponte vio con usar clamp, te ahorra cientos de media queries. */
+  font-size:clamp(.9rem,1.8vw,1.15rem);
+  font-weight:800; letter-spacing:.5px;
+  pointer-events:auto; cursor:pointer;  
+  transition:opacity .2s ease;  /* Clickeable */
+  margin-bottom: 15px;
+}
+.brand span { color:var(--plata); font-weight:300; }  /* Texto secundario del logo */
+
+.nav-group {
+  width: 100%;
+  max-width: 600px;
+  display: flex; flex-direction: column; gap: 12px;
+  pointer-events: auto;  
+  border-bottom: 1px solid rgba(15,76,92,.45);
+  padding-bottom: 12px;
+}
+/* Fila de botones */
+.nav-row {
+  display: flex; flex-wrap: wrap; gap: 12px;
+}
+/* Botones de navegación por sección (Inicio, Perfil, Proyectos, Experiencia) */
+.nav-btn {
+  background: rgba(15,76,92,.1);
+  border: 1px solid rgba(156,163,175,.25);
+  color: rgba(156,163,175,.8);
+  font-family: 'Montserrat', sans-serif;
+  font-size: clamp(0.55rem, 1vw, 0.65rem);
+  font-weight: 600; letter-spacing: 2px;
+  text-transform: uppercase; cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  padding: 12px 18px;
+  border-radius: 6px;
+  text-align: left;
+}
+/* 🧙‍♂️ WIZZARD DICE: ::after es un pseudo-elemento. Te permite inyectar "contenido fantasma" desde CSS sin ensuciar tu HTML. Aquí se uso para la rayita blanca abajo del botón activo. Buen corte. */
+.nav-btn::after {
+  content:''; position:absolute;
+  bottom:-9px; left:0; right:0;
+  height:2px; background:var(--blanco);
+  transform:scaleX(0); transition:transform .3s ease;
+}
+.nav-btn:hover { color: var(--blanco); border-color: rgba(248,250,252,.4); }  
+.nav-btn.active { color: var(--blanco); border-color: rgba(248,250,252,.7); background: rgba(15,76,92,.4); }  
+.nav-btn.active::after { transform:scaleX(0.5); }  /* Muestra línea cuando está activo */
+
+/* Botón de contacto */
+.btn-contacto {
+  align-self: flex-start;
+  background: rgba(15,76,92,.15);
+  color: rgba(248,250,252,.85);
+  border: 1px solid rgba(156,163,175,.25);
+  border-radius: 6px;
+  padding: 12px 18px;
+  font-size: clamp(0.6rem, 0.95vw, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 1.7px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .3s ease;
+}
+.btn-contacto:hover { background: rgba(15,76,92,.3); color: var(--plata); }
+.btn-contacto.active { color: var(--blanco); border-color: rgba(248,250,252,.7); background: rgba(15,76,92,.4); }
+
+.gallery-panel, .gallery-section {
+  margin-top: 24px;
+  display: grid;
+  gap: 18px;
+}
+.gallery-thumb, .thumb-placeholder {
+  min-height: 180px;
+  border: 1px dashed rgba(156,163,175,.45);
+  border-radius: 14px;
+  /* 🧙‍♂️ WIZZARD DICE: place-items: center centra el contenido vertical y horizontalmente en un contenedor grid en una sola línea. Wey, antes teníamos que escribir biblias para centrar un div. Agradece a los dioses modernos. */
+  display: grid;
+  place-items: center;
+  color: rgba(156,163,175,.72);
+  font-size: .88rem;
+  text-align: center;
+  padding: 18px;
+  background: rgba(15,76,92,.08);
+}
+.thumb-placeholder {
+  min-height: 100px;
+  background: #05080d;
+  color: var(--petroleo);
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+.gallery-btn {
+  width: fit-content;
+  background: var(--petroleo);
+  border: none;
+  color: var(--blanco);
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: transform .2s ease, opacity .2s ease;
+}
+.gallery-btn:hover { transform: translateY(-1px); opacity: .95; }
+
+/* 🧙‍♂️ WIZZARD DICE: El modal está oculto con opacity: 0 y pointer-events: none. Cuando le agregas la clase .show por JS, cambia a pointer-events: auto para que reciba clicks y se vuelve visible. Clásico truco ninja. */
+#gallery-overlay {
+  position: fixed; inset:0;
+  z-index: 20;
+  display: grid; place-items: center;
+  background: rgba(0,0,0,.84);
+  opacity:0;
+  pointer-events:none;
+  transition: opacity .25s ease;
+}
+#gallery-overlay.show { opacity:1; pointer-events:auto; }
+
+.gallery-card {
+  /* 🧙‍♂️ WIZZARD DICE: min(560px, calc(100vw - 40px)) toma el valor más pequeño. O sea, tendrá 560px de ancho máximo, pero si la pantalla del celu es más chica, tomará el ancho de la pantalla menos un pequeño margen. Inteligencia artificial pura. */
+  width: min(560px, calc(100vw - 40px));
+  background: rgba(17,24,39,.98);
+  border: 1px solid rgba(156,163,175,.15);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 20px 80px rgba(0,0,0,.35);
+}
+.gallery-card-header {
+  display:flex; justify-content:space-between; align-items:center; gap:10px;
+  margin-bottom: 20px;
+}
+.gallery-card-title {
+  font-size: 1rem; font-weight: 700; letter-spacing: 1px;
+  color: var(--blanco);
+}
+.gallery-close {
+  width: 42px; height: 42px;
+  border: 1px solid rgba(156,163,175,.25);
+  border-radius: 50%; background: transparent;
+  color: rgba(248,250,252,.8); font-size: 1.2rem;
+  cursor: pointer;
+}
+.gallery-card-body { display:grid; gap: 16px; }
+.gallery-thumb-large {
+  min-height: 220px;
+  border-radius: 14px;
+  border: 1px dashed rgba(156,163,175,.35);
+  display: grid; place-items: center;
+  color: rgba(156,163,175,.72);
+  background: rgba(15,76,92,.08);
+  font-size: .95rem;
+  text-align: center;
+  padding: 20px;
+}
+.gallery-card-body p {
+  color: rgba(203,213,225,.8);
+  line-height: 1.6;
+  font-size: .92rem;
+}
+
+/* ================================================
+   PANEL DE TEXTO E INTERFAZ INTERNA (DESKTOP)
+   Lado izquierdo: información y navegación de contenido
+   ================================================ */
+/* Panel principal de texto: ocupar el lado izquierdo en desktop */
+#text-panel {
+  position:fixed; left:0; top:0;
+  width:var(--col-txt); height:100%;  
+  z-index:5; display:flex; align-items:center;
+  padding:120px clamp(20px,4vw,64px) 80px clamp(20px,4.5vw,72px);
+  pointer-events:none;  /* Se activa cuando contiene contenido clickeable */
+}
+#text-panel::before {
+  content:''; position:absolute;
+  left:clamp(20px,4.5vw,72px); top:33.33%; bottom:33.33%; width:2px;
+  background:linear-gradient(to bottom, transparent, rgba(15,76,92,.4) 30%, rgba(15,76,92,.4) 70%, transparent);
+  pointer-events:none;
+}
+.text-content {
+  max-width:520px; width:100%;
+  transition:opacity .2s ease, transform .2s ease;
+}
+.text-content.hidden { opacity:0; transform:translateX(-15px); pointer-events:none; }
+
+.ref-num {
+  font-size:.56rem; font-weight:700;
+  letter-spacing:3px; text-transform:uppercase;
+  color:rgba(15,76,92,.85); margin-bottom:16px;
+  display:flex; align-items:center; gap:10px;
+}
+.ref-num::after { content:''; flex:1; max-width:40px; height:1px; background:rgba(15,76,92,.45); }
+
+h1.sec-title {
+  font-size:clamp(2.4rem,6vw,4.6rem);
+  font-weight:900; line-height:1.0; letter-spacing:-1px; margin-bottom:14px;
+}
+p.sec-sub {
+  font-size:clamp(.8rem,1.5vw,1rem); font-weight:300;
+  color:var(--plata); letter-spacing:.2px; margin-bottom:18px; line-height:1.5;
+}
+.sec-body {
+  font-size:clamp(.72rem,1.1vw,.85rem); font-weight:400;
+  color:rgba(203,213,225,.72); line-height:1.75; max-width:400px;
+}
+.sec-tags { display:flex; flex-wrap:wrap; gap:7px; margin-top:22px; }
+.tag {
+  font-size:.56rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+  padding:5px 12px; border:1px solid rgba(15,76,92,.6);
+  color:rgba(15,76,92,.85); border-radius:2px;
+}
+
+.x-nav-container {
+  margin-top: 30px; display: flex; gap: 15px;
+  pointer-events: auto;
+}
+.x-nav-btn {
+  background: transparent; border: 1px solid var(--petroleo);
+  color: var(--plata); width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s ease;
+  font-weight: bold; border-radius: 2px;
+}
+.x-nav-btn:hover { background: var(--petroleo); color: var(--blanco); }
+.x-nav-btn:disabled { opacity: 0.2; cursor: default; background: transparent; color: var(--plata); }
+
+.hud-hint {
+  position: fixed; bottom: 28px; right: 30px;
+  font-size: .54rem; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(156,163,175,.4); text-align: right;
+}
+
+/* ================================================
+   MEDIA QUERY: OPTIMIZACIÓN MÓVIL
+   ================================================ */
+#mob-drawer {
+  display: none;
+}
+#mob-nav-bar {
+  display: none;
+}
+/* 🧙‍♂️ WIZZARD DICE: @media (max-width: 700px) cambia las reglas del juego. Todo lo que esté aquí adentro solo se aplicará si la pantalla es más chica que 700px. Ideal para adaptar el layout a celulares. */
+@media (max-width:700px) {
+
+  #mob-drawer {
+    display: block;
+    position: fixed; inset: 0;
+    z-index: 200;
+    pointer-events: none;
+  }
+  #mob-drawer-bg {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0);
+    transition: background .3s ease;
+  }
+  #mob-drawer-panel {
+    position: absolute;
+    top: 0; right: 0;
+    width: min(280px, 82vw);
+    height: 100%;
+    background: rgba(11,17,26,0.97);
+    /* 🧙‍♂️ WIZZARD DICE: backdrop-filter difumina lo que hay detrás del elemento. Efecto vidrio esmerilado, puro cyberpunk. */
+    backdrop-filter: blur(14px);
+    border-left: 1px solid rgba(15,76,92,0.5);
+    transform: translateX(100%);
+    transition: transform .32s cubic-bezier(.4,0,.2,1);
+    padding: 72px 24px 40px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  #mob-drawer.open { pointer-events: auto; }
+  #mob-drawer.open #mob-drawer-bg { background: rgba(0,0,0,0.55); }
+  #mob-drawer.open #mob-drawer-panel { transform: translateX(0); }
+
+  .mob-drawer-label {
+    font-size: 0.48rem; font-weight: 700; letter-spacing: 3px;
+    color: rgba(15,76,92,0.7); text-transform: uppercase;
+    margin-bottom: 6px; margin-top: 4px;
+  }
+  .mob-drawer-btn {
+    background: rgba(15,76,92,0.1);
+    border: 1px solid rgba(156,163,175,0.18);
+    color: rgba(156,163,175,0.85);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.62rem; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 13px 16px; border-radius: 6px;
+    cursor: pointer; text-align: left;
+    transition: all .2s ease;
+    width: 100%;
+  }
+  .mob-drawer-btn:hover,
+  .mob-drawer-btn.active {
+    color: var(--blanco);
+    border-color: rgba(248,250,252,0.5);
+    background: rgba(15,76,92,0.35);
+  }
+
+  html, body {
+    /* 🧙‍♂️ WIZZARD DICE: !important fuerza esta regla sobre cualquier otra. Se usa solo en casos de emergencia, como conjurar fuego cuando te ataca un dragón. No abuses de él. */
+    overflow: hidden !important;
+    height: 100% !important;
+  }
+
+  header {
+    padding: 12px 16px;
+    background: rgba(17,24,39,0.88);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(15,76,92,0.3);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: auto;
+  }
+  .brand {
+    font-size: 0.78rem;
+    margin-bottom: 0;
+    flex: 1;
+  }
+
+  .nav-group { display: none; }
+
+  #mob-nav-bar {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    pointer-events: auto;
+  }
+  .mob-quick-btn {
+    background: rgba(15,76,92,0.12);
+    border: 1px solid rgba(156,163,175,0.22);
+    color: rgba(156,163,175,0.85);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.52rem; font-weight: 700;
+    letter-spacing: 1.6px; text-transform: uppercase;
+    padding: 9px 13px; border-radius: 5px;
+    cursor: pointer; white-space: nowrap;
+    transition: all .2s ease;
+  }
+  .mob-quick-btn:hover,
+  .mob-quick-btn.active {
+    color: var(--blanco);
+    border-color: rgba(248,250,252,0.55);
+    background: rgba(15,76,92,0.38);
+  }
+
+  #mob-burger {
+    background: rgba(15,76,92,0.12);
+    border: 1px solid rgba(156,163,175,0.22);
+    color: rgba(156,163,175,0.85);
+    width: 38px; height: 38px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 5px; padding: 0;
+    transition: all .2s ease;
+    flex-shrink: 0;
+  }
+  #mob-burger span {
+    display: block;
+    width: 16px; height: 1.5px;
+    background: rgba(156,163,175,0.85);
+    border-radius: 2px;
+    transition: all .25s ease;
+  }
+  #mob-burger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+  #mob-burger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+  #mob-burger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+  #mob-burger:hover { border-color: rgba(248,250,252,0.55); background: rgba(15,76,92,0.38); }
+  #mob-burger:hover span { background: var(--blanco); }
+
+  #text-panel {
+    position: fixed !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    height: 52vh !important; 
+    padding: 20px 20px 30px 20px !important;
+    background: linear-gradient(to top, rgba(17,24,39,0.82) 70%, rgba(17,24,39,0.4) 92%, transparent);
+    display: flex;
+    align-items: flex-start;
+    overflow-y: auto; 
+    pointer-events: auto; 
+    z-index: 8;
+  }
+  #text-panel::before { display:none; }
+  .text-content { max-width: 100%; }
+
+  .ref-num { font-size: 0.52rem; margin-bottom: 10px; }
+  h1.sec-title { font-size: 1.7rem; margin-bottom: 8px; }
+  p.sec-sub { font-size: 0.8rem; margin-bottom: 12px; }
+  .sec-body { font-size: 0.76rem; max-width: 100%; }
+  .sec-tags { margin-top: 14px; gap: 5px; }
+  .tag { padding: 4px 8px; font-size: 0.5rem; }
+
+  .x-nav-container {
+    margin-top: 18px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .x-nav-btn {
+    flex: 1;
+    height: 38px;
+    font-size: 1rem;
+  }
+
+  .gallery-section { margin-top: 14px; padding: 10px; }
+  .thumb-placeholder { min-height: 80px; font-size: 0.7rem; }
+  .gallery-btn { width: 100%; padding: 10px; font-size: 0.72rem; text-align: center; }
+  
+  #gallery-overlay { padding: 10px; }
+  .gallery-card { padding: 16px; }
+
+  .hud-hint { display:none; }
+}
+
+/* ================================================
+   BOOT SEQUENCE
+   ================================================ */
+#boot {
+  position:fixed; inset:0; z-index:1000; background-color:var(--negro);
+  background-image: linear-gradient(rgba(15,76,92,.42) 1px,transparent 1px), linear-gradient(90deg,rgba(15,76,92,.42) 1px,transparent 1px);
+  background-size:22px 22px; display:flex; flex-direction:column;
+  justify-content:center; align-items:flex-start; padding-left:8vw; cursor:pointer;
+  transition:opacity .5s ease;
+}
+#boot.hide { opacity:0; pointer-events:none; }
+.bline { font-size:.64rem; font-weight:400; letter-spacing:.3px; color:rgba(156,163,175,.42); margin-bottom:4px; }
+.bline .acc { color:rgba(15,76,92,.8); font-weight:600; }
+#boot-skip { margin-top:20px; font-size:.54rem; letter-spacing:2px; color:rgba(15,76,92,.38); }
+</style>
+</head>
+<body>
+
+<div id="boot"><div id="boot-lines"></div><div id="boot-skip">INICIALIZANDO... [TOCA PARA OMITIR]</div></div>
+
+<canvas id="scene-canvas"></canvas>
+
+<div class="scanline"></div>
+
+<div class="vignette"></div>
+<div class="hud tl"></div><div class="hud tr"></div><div class="hud bl"></div><div class="hud br"></div>
+<div id="glitch-container"></div>
+
+<div id="gallery-overlay" aria-hidden="true">
+  <div class="gallery-card" role="dialog" aria-modal="true" aria-labelledby="gallery-title">
+    <div class="gallery-card-header">
+      <div class="gallery-card-title" id="gallery-title">Galería de Proyectos</div>
+      <button id="close-gallery" class="gallery-close" aria-label="Cerrar galería">×</button>
+    </div>
+    <div class="gallery-card-body">
+      <div class="gallery-thumb-large">[INSERTAR IMAGEN AQUÍ]</div>
+      <p>Selecciona un proyecto para mostrar el visor en pantalla completa.</p>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="brand" id="brand-home">BASTIÁN JIMÉNEZ <span>· INDUSTRIAL CAD/CAM</span></div>
+  
+  <div class="nav-group">
+    <div class="nav-row">
+      <button class="nav-btn" data-y="0">INICIO</button>
+      <button class="nav-btn" data-y="1">PERFIL TÉCNICO</button>
+      <button class="nav-btn" data-y="2">PROYECTOS</button>
+      <button class="nav-btn" data-y="3">EXPERIENCIA</button>
+    </div>
+    <button class="btn-contacto" data-y="4">CONTACTO</button>
+  </div>
+
+  <div id="mob-nav-bar">
+    <button class="mob-quick-btn" id="mob-btn-inicio">INICIO</button>
+    <button class="mob-quick-btn" id="mob-btn-contacto">CONTACTO</button>
+    <button id="mob-burger" aria-label="Menú" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<div id="mob-drawer" aria-hidden="true">
+  <div id="mob-drawer-bg"></div>
+  <div id="mob-drawer-panel" role="dialog" aria-label="Menú de navegación">
+    <div class="mob-drawer-label">Secciones</div>
+    <button class="mob-drawer-btn" data-y="0">INICIO</button>
+    <button class="mob-drawer-btn" data-y="1">PERFIL TÉCNICO</button>
+    <button class="mob-drawer-btn" data-y="2">PROYECTOS</button>
+    <button class="mob-drawer-btn" data-y="3">EXPERIENCIA</button>
+    <div class="mob-drawer-label" style="margin-top:16px;">Contacto</div>
+    <button class="mob-drawer-btn" data-y="4">CONTACTO</button>
+  </div>
+</div>
+
+<div id="text-panel">
+  <div class="text-content" id="text-content"></div>
+</div>
+
+<div class="hud-hint">SYS_NAV:<br>[Y] SCROLL GLOBAL<br>[X] ARROWS INTERNOS</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+if (typeof THREE === 'undefined') {
+  document.getElementById('boot-lines').innerHTML = '<span style="color:#ff3333; font-weight:bold;">[ERROR CRÍTICO] La librería Three.js no cargó.</span>';
+  return;
+}
+
+function getGeometry(x, y, z) {
+  switch (x) {
+    case 0: // X = 0 → INICIO
+      return new THREE.TorusGeometry(1.6, 0.35, 6, 16);
+
+    case 1: // X = 1 → PERFIL
+      return new THREE.IcosahedronGeometry(2.0, 0);
+
+    case 2: // X = 2 → PROYECTOS
+      switch (y) {
+        case 0: // Y = 0 → Proyecto A
+          if (z === 0) return new THREE.ConeGeometry(1.6, 3.2, 4);     // (x2,y0,z0)
+          if (z === 1) return new THREE.BoxGeometry(1, 1, 1);          // (x2,y0,z1)
+          if (z === 2) return new THREE.CylinderGeometry(0.5, 0.5, 2); // (x2,y0,z2)
+          break;
+
+        case 1: // Y = 1 → Proyecto B
+          if (z === 0) return new THREE.BoxGeometry(2.2, 0.4, 2.2);     // (x2,y1,z0)
+          if (z === 1) return new THREE.TorusGeometry(0.8, 0.2, 8);     // (x2,y1,z1)
+          break;
+
+        case 2: // Y = 2 → Proyecto C
+          if (z === 0) return new THREE.SphereGeometry(1.4, 16, 16);    // (x2,y2,z0)
+          break;
+
+        // Aquí puedes seguir con case 3, case 4, ..., case 99
+      }
+      break;
+
+    case 3: // X = 3 → EXPERIENCIA
+      switch (y) {
+        case 0: // Y = 0 → Experiencia A
+          if (z === 0) return new THREE.TetrahedronGeometry(2.2, 0);    // (x3,y0,z0)
+          if (z === 1) return new THREE.OctahedronGeometry(1.5, 0);      // (x3,y0,z1)
+          break;
+
+        case 1: // Y = 1 → Experiencia B
+          if (z === 0) return new THREE.OctahedronGeometry(1.9, 0);      // (x3,y1,z0)
+          if (z === 1) return new THREE.CylinderGeometry(1.2, 0.8, 2.4, 12); // (x3,y1,z1)
+          break;
+
+        case 2: // Y = 2 → Experiencia C
+          if (z === 0) return new THREE.TorusKnotGeometry(1.0, 0.3, 100, 16); // (x3,y2,z0)
+          break;
+
+        // Aquí también puedes extender con case 3, case 4, ..., case 99
+      }
+      break;
+
+    case 4: // X = 4 → CONTACTO
+      return new THREE.BoxGeometry(2.4, 2.4, 2.4); // (x4,y0,z0)
+  }
+
+  return new THREE.SphereGeometry(1.5, 6, 6); // Fallback si no coincide ninguna coordenada
+}
+
+/* 🧙‍♂️ WIZZARD DICE: Aquí invocas la Santa Trinidad del 3D. 
+   1. Scene: El universo vacío.
+   2. Camera: El ojo del usuario observando ese universo.
+   3. Renderer: El artista veloz que dibuja lo que la cámara ve en tu canvas. */
+const canvas = document.getElementById('scene-canvas');
+const scene  = new THREE.Scene();  
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.z = 13;  
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));  
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+scene.add(new THREE.AmbientLight(0x0a1a24, 1.0));  
+const dirLight = new THREE.DirectionalLight(0x0F4C5C, 1.5);  
+dirLight.position.set(-5, 5, 5);  
+scene.add(dirLight);
+
+const objGroup = new THREE.Group();
+scene.add(objGroup);
+let currentModel = null;  
+const pulsingEdges = [];  
+
+function updateObjectPosition() {
+  const vFOV = THREE.MathUtils.degToRad(camera.fov);
+  const wH   = 2 * Math.tan(vFOV / 2) * camera.position.z;
+  const wW   = wH * camera.aspect;
+  const isMobile = window.innerWidth <= 700;
+  objGroup.position.set(isMobile ? 0 : wW * 0.22, isMobile ? wH * 0.16 : 0, 0);
+}
+
+function createHiddenLineMesh(geometry) {
+  const group = new THREE.Group();
+  const solidMat = new THREE.MeshBasicMaterial({
+    color: 0x071b24, transparent: true, opacity: 0.95,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+  });
+  const solidMesh = new THREE.Mesh(geometry, solidMat);
+  
+  const edges = new THREE.EdgesGeometry(geometry);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x9CA3AF, linewidth: 1.5, transparent: true, opacity: 0.85 });
+  lineMat.userData.base = 0.85;  
+  pulsingEdges.push(lineMat);  
+  const wireframe = new THREE.LineSegments(edges, lineMat);
+  
+  group.add(solidMesh);
+  group.add(wireframe);
+  return group;
+}
+
+
+const PARTICLE_COUNT = 600;
+const EXPLODE_DUR  = 0.62;
+const CONVERGE_DUR = 1.05;
+const PARTICLE_COLOR = 0x9CA3AF;
+
+function sampleSurface(geometry, count) {
+  const geo = geometry.index ? geometry.toNonIndexed() : geometry;
+  const pos = geo.attributes.position;
+  const points = [];
+
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+  const triCount = Math.floor(pos.count / 3);
+  if (triCount === 0) {
+    for (let i = 0; i < Math.min(pos.count, count); i++) {
+      points.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+    }
+    return points;
+  }
+
+  const areas = new Float32Array(triCount);
+  let totalArea = 0;
+  for (let i = 0; i < triCount; i++) {
+    vA.set(pos.getX(i*3),   pos.getY(i*3),   pos.getZ(i*3));
+    vB.set(pos.getX(i*3+1), pos.getY(i*3+1), pos.getZ(i*3+1));
+    vC.set(pos.getX(i*3+2), pos.getY(i*3+2), pos.getZ(i*3+2));
+    areas[i] = vB.clone().sub(vA).cross(vC.clone().sub(vA)).length() * 0.5;
+    totalArea += areas[i];
+  }
+
+  for (let s = 0; s < count; s++) {
+    let r = Math.random() * totalArea;
+    let ti = 0;
+    for (let i = 0; i < triCount; i++) {
+      r -= areas[i];
+      if (r <= 0) { ti = i; break; }
+      ti = i;
+    }
+    vA.set(pos.getX(ti*3),   pos.getY(ti*3),   pos.getZ(ti*3));
+    vB.set(pos.getX(ti*3+1), pos.getY(ti*3+1), pos.getZ(ti*3+1));
+    vC.set(pos.getX(ti*3+2), pos.getY(ti*3+2), pos.getZ(ti*3+2));
+    let r1 = Math.random(), r2 = Math.random();
+    if (r1 + r2 > 1) { r1 = 1 - r1; r2 = 1 - r2; }
+    points.push(
+      vA.clone()
+        .addScaledVector(vB.clone().sub(vA), r1)
+        .addScaledVector(vC.clone().sub(vA), r2)
+    );
+  }
+  return points;
+}
+
+let particlesCore  = null;  
+let particlesHalo  = null;  
+let particleVels   = [];
+let particleTargets = [];
+let particlePhase  = 'none';
+let particleTimer  = 0;
+let particleOnDone = null;
+
+function killParticles() {
+  [particlesCore, particlesHalo].forEach(p => {
+    if (p) { objGroup.remove(p); p.geometry.dispose(); p.material.dispose(); }
+  });
+  particlesCore = particlesHalo = null;
+  particleVels = []; particleTargets = [];
+  particlePhase = 'none'; particleTimer = 0;
+  particleOnDone = null;
+}
+
+/* 🧙‍♂️ WIZZARD DICE: BufferGeometry es mucho más rápido y amable con la memoria que la antigua clase Geometry, porque se comunica directo con la tarjeta gráfica usando matrices en vez de objetos de Javascript. Siempre usa buffers. */
+function makeParticleSystem(positions, sizeCore, sizeHalo, opacity) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3));
+
+  const matCore = new THREE.PointsMaterial({
+    color: 0xC8D8E8, size: sizeCore, transparent: true, opacity,
+    depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const matHalo = new THREE.PointsMaterial({
+    color: 0x4A8AAA, size: sizeHalo, transparent: true, opacity: opacity * 0.35,
+    depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  const geomH = geom.clone();
+
+  return {
+    core: new THREE.Points(geom, matCore),
+    halo: new THREE.Points(geomH, matHalo)
+  };
+}
+
+function spawnExplodeParticles(fromGeo) {
+  killParticles();
+  const verts = sampleSurface(fromGeo, PARTICLE_COUNT);
+  if (!verts.length) return;
+
+  const positions = new Float32Array(verts.length * 3);
+  verts.forEach((v, i) => {
+    positions[i*3] = v.x; positions[i*3+1] = v.y; positions[i*3+2] = v.z;
+    const outward = v.clone().normalize().multiplyScalar(1.2 + Math.random() * 3.0);
+    outward.x += (Math.random() - 0.5) * 1.5;
+    outward.y += (Math.random() - 0.5) * 1.5;
+    outward.z += (Math.random() - 0.5) * 0.8;
+    particleVels.push(outward);
+  });
+
+  const sys = makeParticleSystem(positions, 0.055, 0.22, 0.95);
+  particlesCore = sys.core; particlesHalo = sys.halo;
+
+  objGroup.add(particlesCore); objGroup.add(particlesHalo);
+  particlePhase = 'explode'; particleTimer = 0;
+}
+
+function spawnConvergeParticles(toGeo, onDone) {
+  killParticles();
+  const verts = sampleSurface(toGeo, PARTICLE_COUNT);
+  if (!verts.length) { onDone(); return; }
+
+  particleTargets = verts.map(v => v.clone());
+  const positions = new Float32Array(verts.length * 3);
+  verts.forEach((v, i) => {
+    const spread = 5 + Math.random() * 4;
+    const angle  = Math.random() * Math.PI * 2;
+    const angle2 = Math.random() * Math.PI;
+    positions[i*3]   = Math.sin(angle2) * Math.cos(angle) * spread;
+    positions[i*3+1] = Math.sin(angle2) * Math.sin(angle) * spread;
+    positions[i*3+2] = Math.cos(angle2) * spread * 0.35;
+  });
+
+  const sys = makeParticleSystem(positions, 0.055, 0.22, 0.0);
+  particlesCore = sys.core; particlesHalo = sys.halo;
+  objGroup.add(particlesCore); objGroup.add(particlesHalo);
+  particlePhase  = 'converge'; particleTimer = 0;
+  particleOnDone = onDone;
+}
+
+function updateParticles(dt) {
+  if (particlePhase === 'none' || !particlesCore) return;
+  particleTimer += dt;
+
+  const posC = particlesCore.geometry.attributes.position;
+  const posH = particlesHalo.geometry.attributes.position;
+
+  if (particlePhase === 'explode') {
+    const t    = Math.min(particleTimer / EXPLODE_DUR, 1);
+    const ease = 1 - Math.pow(1 - t, 3); 
+    const op   = 0.95 * (1 - ease);
+    particlesCore.material.opacity = op;
+    particlesHalo.material.opacity = op * 0.35;
+
+    for (let i = 0; i < particleVels.length; i++) {
+      const vx = particleVels[i].x * dt * 2.8;
+      const vy = particleVels[i].y * dt * 2.8;
+      const vz = particleVels[i].z * dt * 2.8;
+      posC.setXYZ(i, posC.getX(i)+vx, posC.getY(i)+vy, posC.getZ(i)+vz);
+      posH.setXYZ(i, posH.getX(i)+vx, posH.getY(i)+vy, posH.getZ(i)+vz);
+    }
+    posC.needsUpdate = true; posH.needsUpdate = true;
+    if (t >= 1) killParticles();
+
+  } else if (particlePhase === 'converge') {
+    const t    = Math.min(particleTimer / CONVERGE_DUR, 1);
+    const ease = t < 0.5 ? 8*t*t*t*t : 1 - Math.pow(-2*t+2,4)/2;
+    const op   = Math.min(t * 4, 1.0) * (1 - Math.max(0, (t - 0.88) / 0.12));
+    particlesCore.material.opacity = op * 0.95;
+    particlesHalo.material.opacity = op * 0.32;
+
+    const lerpK = dt * (1.2 + ease * 11);
+    for (let i = 0; i < particleTargets.length; i++) {
+      const tx = particleTargets[i].x, ty = particleTargets[i].y, tz = particleTargets[i].z;
+      const cx = posC.getX(i) + (tx - posC.getX(i)) * lerpK;
+      const cy = posC.getY(i) + (ty - posC.getY(i)) * lerpK;
+      const cz = posC.getZ(i) + (tz - posC.getZ(i)) * lerpK;
+      posC.setXYZ(i, cx, cy, cz);
+      posH.setXYZ(i, cx, cy, cz);
+    }
+    posC.needsUpdate = true; posH.needsUpdate = true;
+
+    if (t >= 1) {
+      const cb = particleOnDone;
+      killParticles();
+      if (cb) cb();
+    }
+  }
+}
+
+let pendingGeo = null;
+let currY = 0;
+let currX = 0;
+let isTransiting = false;
+
+const DATA_MATRIX = [
+  [
+    {
+      ref: '\n\n\n\n\n0000 INICIO',
+      title: 'Bastián\nJiménez',
+      sub: 'Diseño y fabricación Industrial',
+      body: 'Portafolio tecnico y trayectoria.\nExplora la galería de proyectos y experiencias en una interfaz interactiva y tridimensional.',
+      tags: ['DXF', 'NC', 'CNC', 'CAD', 'CAM', 'BLEND', 'DWG', 'STL', 'STEP', 'IPT', 'IAM', 'AI', 'JSX', 'C4D', 'AEP', 'IGES',  'GLTF', 'OBJ', 'FBX',]
+    }
+  ],
+  [
+    {
+      ref: '0001 PERFIL TÉCNICO',
+      title: 'Acerca de mí',
+      sub: 'Diseño Mecánico y Manufactura Avanzada',
+      body: 'Soy diseñador mecánico con enfoque en modelado paramétrico, simulación y optimización de procesos.\nEspecialista en desarrollo técnico, prototipado y automatización CNC.',
+      tags: ['AUTOCAD', 'BLENDER', 'INVENTOR', 'THREEJS', 'FASTCAM', 'MASTERCAM', 'NX', 'CAMWORKS', 'MACH3', 'GRBL', 'POST-PROCESSOR']
+    }
+  ],
+  [
+    {
+      ref: '0002 Galería de Proyectos',
+      title: 'PROYECTOS',
+      sub: 'Registro de piezas y planimetría',
+      body: 'Material fotográfico, videos y visualización 3D.\nCasos reales de ingeniería, desarrollo de productos y manufactura.',
+      tags: ['Construcción', 'Minería', 'Publicidad', 'MetalMecánica', 'Electrónica', 'Procesos']
+    },
+    {
+      ref: '0002.1 Galería de Proyectos',
+      title: 'Sistema Lumínico\n Teatro Aula Magna',
+      sub: 'Señalética e iluminación de seguridad patrimonial',
+      body: 'Desarrollo para el Proyecto USA 2393 (Cód. Pert. OE1:A2).\nDiseño, prototipado e integración de hardware inalámbrico autónomo.',
+      tags: ['CNC', 'Corte Láser', 'Orfebrería', 'Electrónica', 'USACH']
+    },
+    {
+      ref: '0002.1 Galería de Proyectos',
+      title: 'Ejemplo\nde wea que hice II',
+      sub: 'para que lo hice',
+      body: 'Segunda vista del proyecto con foco en su proseso.\nmas texto pa darle color.',
+      tags: ['tag1', 'tag2', 'tag3']
+      },
+      {
+      ref: '0002.2 Galería de Proyectos',
+      title: 'Ejemplo\nde wea que hice III',
+      sub: 'para que lo hice',
+      body: 'Segunda vista del proyecto con foco en su proseso.\nmas texto pa darle color.',
+      tags: ['tag1', 'tag2', 'tag3']
+    },
+    {
+      ref: '0002.3 Galería de Proyectos',
+      title: 'Ejemplo\nde wea que hice IV',
+      sub: 'para que lo hice',
+      body: 'Segunda vista del proyecto con foco en su proseso.\nmas texto pa darle color.',
+      tags: ['tag1', 'tag2', 'tag3']
+    }
+    ],
+  [
+    {
+      ref: '0003 Trayectoria',
+      title: 'EXPERIENCIA',
+      sub: 'Trayectoria Laboral',
+      body: 'Experiencia en diseño industrial, automatización y manufactura CNC.\ncolaboración con equipos multidisciplinarios en soluciones completas.',
+      tags: ['Publicidad', 'Retail', 'MetalMecánica', 'Construcción']
+    },
+    {
+      ref: '0003.1 Trayectoria', // Reacomoda los índices (.2, .3, etc.) en tu matriz según dónde lo ubiques
+      title: 'Universidad de\nSantiago de Chile',
+      sub: 'Contratista Especializado',
+      body: 'Ejecución del Proyecto USA 2393 (Cód. Pert. OE1:A2).\nDiseño, instalación y plan de mantención para el sistema integral de numeración de butacas y luces de seguridad.',
+      tags: ['USACH', 'GESTIÓN TÉCNICA', 'SISTEMAS INALÁMBRICOS', 'NORMAS PATRIMONIALES', 'FABRICACIÓN DIGITAL', 'PRESUPUESTOS', 'PLANIMETRÍA', 'CNC', 'CORTE LÁSER', 'ELECTRÓNICA', 'CUBICACION','MANTENIMIENTO', 'INSTALACIÓN']
+    },
+     {
+      ref: '0003.2 Trayectoria',
+      title: 'MetalMaf',
+      sub: 'Diseño de piezas, planimetría y programacion G-Code, procesos CNC y fabricación de piezas con tolerancias estrictas,\ntrabajando en conjunto con el equipo de ingeniería y ventas',
+      body: 'Experiencia en diseño industrial y manufactura CNC.\naki la wea que hice.',
+      tags: ['Minería', 'Pipping', 'Mecanizados CNC XYZ', 'Torno CNC XZ', 'Laser Fibra CNC']
+    },
+     {
+      ref: '0003.3 Trayectoria',
+      title: 'Aceroled.cl',
+      sub: 'DESCRIPCION,\nY SU CORTE',
+      body: 'Y ESO PO.\naki la wea que hice.',
+      tags: ['VENTAS', 'PRESUPUESTOS', 'SECTOR PUBLICO Y PRIVADO', 'RETAIL', 'LETREROS', 'PUBLICIDAD', 'CONSTRUCCION', 'CAPACITACIONES', 'MECANICA INDUSTRIAL', 'MANTENIMIENTO']
+    },
+     {
+      ref: '0003.4 Trayectoria',
+      title: 'Monterrios.cl',
+      sub: 'DESCRIPCION,\nY SU CORTE',
+      body: 'Y ESO PO.\naki la wea que hice.',
+      tags: ['tag1', 'tag2', 'tag3']
+    },
+     {
+      ref: '0003.4 Trayectoria',
+      title: 'GUZGA ltda',
+      sub: 'DESCRIPCION,\nY SU CORTE',
+      body: 'Y ESO PO.\naki la wea que hice.',
+      tags: ['tag1', 'tag2', 'tag3']
+    },
+     {
+      ref: '0003.5 Trayectoria',
+      title: 'ENAER',
+      sub: 'Empresa Nacional de Aeronautica',
+      body: 'Y ESO PO.\naki la wea que hice.',
+      tags: ['tag1', 'tag2', 'tag3']
+    },
+     {
+      ref: '0003.5 Trayectoria',
+      title: 'EGIS Padre Hurtado',
+      sub: 'Empresa de Gestion,\ninmobiliaria social',
+      body: 'Y ESO PO.\naki la wea que hice.',
+      tags: ['tag1', 'tag2', 'tag3']
+    },
+  ],
+  [
+    {
+      ref: '0004',
+            title: 'CONTACTO',
+      sub: 'Disponible para nuevos desafíos',
+      body: 'Trabajemos juntos en tu próximo proyecto.\nbastianjimenezmolina@gmail.com\n(+56) 9 35034221\nMaipú, Región Metropolitana, Chile',
+      tags: ['Fabricación', 'Colaboración', 'Proyectos', 'Consultoría']
+    }
+  ]
+];
+
+function spawn3DObject(x, y, z = 0, animType = 'none') {
+  const newGeo = getGeometry(x, y, z);
+
+  if (animType === 'particles' && currentModel) {
+    const solidChild = currentModel.children[0];
+    const fromGeo = solidChild && solidChild.geometry ? solidChild.geometry : newGeo;
+
+    currentModel.visible = false;
+    pendingGeo = newGeo;
+
+    spawnExplodeParticles(fromGeo);
+
+    setTimeout(() => {
+      spawnConvergeParticles(newGeo, () => {
+        _doSpawn(newGeo, x);
+      });
+    }, EXPLODE_DUR * 1000 + 180);
+
+  } else {
+    _doSpawn(newGeo, x, animType);
+  }
+}
+
+function _doSpawn(geo, y, animType) {
+  if (currentModel) {
+    objGroup.remove(currentModel);
+    currentModel.children.forEach(c => {
+      if(c.geometry) c.geometry.dispose();
+      if(c.material) c.material.dispose();
+    });
+  }
+  pulsingEdges.length = 0;
+
+  currentModel = createHiddenLineMesh(geo);
+  currentModel.visible = true;
+
+  currentModel.children.forEach(c => {
+    if (c.material) c.material.opacity = 0;
+  });
+
+  if (animType === 'y_axis') {
+    currentModel.scale.set(0.01, 0.01, 0.01);
+  } else if (animType === 'x_axis_next') {
+    currentModel.position.x = 4;
+  } else if (animType === 'x_axis_prev') {
+    currentModel.position.x = -4;
+  }
+  objGroup.add(currentModel);
+}
+
+spawn3DObject(0, 0, 0);
+updateObjectPosition();
+
+let isDragging = false;
+let dragStart = {x:0, y:0};
+let orbitOffset = {x:0, y:0};
+
+/* 🧙‍♂️ WIZZARD DICE: e.touches es clave para saber si la interacción vino del tacto en un celular o de un click de mouse en desktop. Nunca asumas que todo el mundo usa mouse, carnal. */
+function onDown(e) {
+  isDragging = true;
+  const p = e.touches ? e.touches[0] : e;
+  dragStart.x = p.clientX; dragStart.y = p.clientY;
+}
+function onMove(e) {
+  if (!isDragging) return;
+  const p = e.touches ? e.touches[0] : e;
+  const dx = p.clientX - dragStart.x;
+  const dy = p.clientY - dragStart.y;
+  orbitOffset.x -= dx * 0.0026;
+  orbitOffset.y = Math.max(-0.6, Math.min(0.6, orbitOffset.y - dy * 0.0022));
+  dragStart.x = p.clientX; dragStart.y = p.clientY;
+}
+function onUp() { isDragging = false; }
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', onDown, {passive:true});
+canvas.addEventListener('touchmove', onMove, {passive:true});
+canvas.addEventListener('touchend', onUp);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  updateObjectPosition();
+});
+
+const clock = new THREE.Clock();
+/* 🧙‍♂️ WIZZARD DICE: requestAnimationFrame es lo que usa la élite. En vez de forzar al navegador a actualizar con un setTimeout torpe, le dices al browser "pinta esto cuando estés listo para el próximo frame (60 veces por segundo idealmente)". Cero parpadeos. */
+function animate() {
+  requestAnimationFrame(animate);  
+  /* 🧙‍♂️ WIZZARD DICE: El famoso Delta Time (dt). Calcula cuánto tiempo pasó desde el frame anterior. Usar dt multiplica el movimiento para que la animación sea igual de rápida en una pantalla de 60hz que en un monitor gamer de 144hz. Ley de la relatividad pura. */
+  const dt = clock.getDelta();     
+  const t  = clock.getElapsedTime(); 
+  
+  if (currentModel && currentModel.visible) {
+    currentModel.rotation.y += 0.3 * dt;
+    currentModel.rotation.x = Math.sin(t * 0.5) * 0.15;
+    /* 🧙‍♂️ WIZZARD DICE: LERP (Linear Interpolation). Es magia para suavizar. En vez de "teletransportar" un objeto de 0 a 100 de un porrazo, lerp calcula los pasos intermedios. Por eso se siente tan fluido el movimiento de los objetos 3D. */
+    currentModel.scale.lerp(new THREE.Vector3(1,1,1), 0.1);
+    currentModel.position.lerp(new THREE.Vector3(0, Math.sin(t) * 0.15, 0), 0.1);
+
+    currentModel.children.forEach(c => {
+      if (!c.material) return;
+      const target = c.material.userData.base ?? 0.95;
+      if (c.material.opacity < target) {
+        c.material.opacity = Math.min(c.material.opacity + dt * 2.2, target);
+      }
+    });
+  }
+
+  updateParticles(dt);
+
+  const pulse = 0.82 + 0.18 * Math.sin(t * 1.6);
+  pulsingEdges.forEach(m => { m.opacity = m.userData.base * pulse; });
+
+  camera.position.x = orbitOffset.x * 0.5;
+  camera.position.y = orbitOffset.y * 0.5;
+  renderer.render(scene, camera);
+}
+animate();
+
+
+const textContent = document.getElementById('text-content');
+const topNavBtns = document.querySelectorAll('.nav-btn');
+
+function renderText(y, x) {
+  const data = DATA_MATRIX[y][x];
+  const maxX = DATA_MATRIX[y].length;
+  
+  const bodyLines = data.body.split('\n').map(l => `<p class="sec-body">${l}</p>`).join('');
+  const tags = data.tags.map(t => `<span class="tag">${t}</span>`).join('');
+  
+  let xControls = '';
+  if (maxX > 1) {
+    xControls = `
+      <div class="x-nav-container">
+        <button class="x-nav-btn" id="btn-x-prev" ${x === 0 ? 'disabled' : ''}>←</button>
+        <button class="x-nav-btn" id="btn-x-next" ${x === maxX - 1 ? 'disabled' : ''}>→</button>
+      </div>
+    `;
+  }
+
+  let gallerySection = '';
+  if (y === 2) {
+    gallerySection = `
+      <div class="gallery-section">
+        <div class="thumb-placeholder">INSERTAR IMAGEN AQUÍ</div>
+        <button class="gallery-btn" id="open-gallery">VER GALERÍA</button>
+      </div>
+    `;
+  }
+
+  textContent.innerHTML = `
+    <div class="ref-num">${data.ref} [Y:${y} X:${x}]</div>
+    <h1 class="sec-title">${data.title.replace('\n','<br>')}</h1>
+    <p class="sec-sub">${data.sub}</p>
+    ${bodyLines}
+    <div class="sec-tags">${tags}</div>
+    ${gallerySection}
+    ${xControls}
+  `;
+
+  if (maxX > 1) {
+    document.getElementById('btn-x-prev').addEventListener('click', () => navigateX(-1));
+    document.getElementById('btn-x-next').addEventListener('click', () => navigateX(1));
+  }
+
+  const galleryBtn = document.getElementById('open-gallery');
+  if (galleryBtn) galleryBtn.addEventListener('click', showGallery);
+}
+
+function updateTopNav(activeY) {
+  topNavBtns.forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.y) === activeY);
+  });
+  if (contactBtn) {
+    contactBtn.classList.toggle('active', activeY === 4);
+  }
+  document.querySelectorAll('.mob-drawer-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.y) === activeY);
+  });
+  const mbi = document.getElementById('mob-btn-inicio');
+  const mbc = document.getElementById('mob-btn-contacto');
+  if (mbi) mbi.classList.toggle('active', activeY === 0);
+  if (mbc) mbc.classList.toggle('active', activeY === 4);
+}
+
+const glitchContainer = document.getElementById('glitch-container');
+const colors = ['#0F4C5C', '#9CA3AF', '#F8FAFC', '#111827']; 
+
+function triggerTacticalGlitch(duration = 300) {
+  const amount = Math.floor(Math.random() * 8) + 16;
+  const blocks = [];
+
+  for (let i = 0; i < amount; i++) {
+    const el = document.createElement('div');
+    el.className = 'glitch-block';
+    const isLine = Math.random() < 0.8;
+    el.style.width = isLine ? `${Math.random() * 60 + 12}vw` : `${Math.random() * 18 + 12}vw`;
+    el.style.height = isLine ? `${Math.random() * 4 + 1}px` : `${Math.random() * 18 + 6}px`;
+    el.style.top = `${Math.random() * 100}vh`;
+    el.style.left = `${Math.random() * 120 - 10}vw`;
+    el.style.opacity = `${0.04 + Math.random() * 0.2}`;
+    el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    el.style.transform = `skewX(${Math.random() * 10 - 5}deg)`;
+    el.style.filter = `blur(${Math.random() * 0.8}px)`;
+    el.style.animation = `fade ${(Math.random() * 0.12) + 0.18}s ${Math.random() * 0.12}s infinite alternate`;
+    glitchContainer.appendChild(el);
+    blocks.push(el);
+  }
+
+  document.body.style.transform = `translateX(${Math.random() > 0.5 ? 3 : -3}px) translateY(${Math.random() > 0.5 ? 2 : -2}px)`;
+  document.body.style.filter = 'contrast(1.05) saturate(1.05) hue-rotate(1deg)';
+
+  setTimeout(() => {
+    document.body.style.transform = 'none';
+    document.body.style.filter = '';
+  }, duration * 0.75);
+
+  setTimeout(() => { blocks.forEach(b => b.remove()); }, duration);
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* 🧙‍♂️ WIZZARD DICE: async / await es brujería temporal de la más alta esfera. Te permite usar "await sleep(150);" para hacer pausas en el código, esperando que terminen las animaciones de glitch, SIN CONGELAR a todo el resto del navegador. Todo fluye. */
+async function navigateY(targetY) {
+  if (isTransiting || targetY === currY || targetY < 0 || targetY >= DATA_MATRIX.length) return;
+  isTransiting = true;  
+
+  triggerTacticalGlitch(350);  
+  textContent.classList.add('hidden');  
+  await sleep(150);  
+
+  currY = targetY;
+  currX = 0;  
+  
+  updateTopNav(currY);
+  renderText(currY, currX);
+  spawn3DObject(currY, currX, 0, 'particles');
+  
+  document.getElementById('text-panel').scrollTop = 0;
+  
+  textContent.classList.remove('hidden');
+  isTransiting = false;
+}
+
+async function navigateX(dir) {
+  const targetX = currX + dir;
+  const maxLimit = DATA_MATRIX[currY].length;
+  
+  if (isTransiting || targetX < 0 || targetX >= maxLimit) return;
+  isTransiting = true;
+
+  triggerTacticalGlitch(150);
+  textContent.classList.add('hidden');
+  await sleep(100);
+
+  currX = targetX;
+  renderText(currY, currX);
+  spawn3DObject(currY, currX, 0, 'particles');
+
+  document.getElementById('text-panel').scrollTop = 0;
+
+  textContent.classList.remove('hidden');
+  isTransiting = false;
+}
+
+const contactBtn = document.querySelector('.btn-contacto');
+
+topNavBtns.forEach(btn => {
+  btn.addEventListener('click', () => navigateY(parseInt(btn.dataset.y)));
+});
+if (contactBtn) {
+  contactBtn.addEventListener('click', () => navigateY(4));
+}
+
+let wCooldown = false;  
+window.addEventListener('wheel', e => {
+  if (wCooldown || isTransiting) return;
+  wCooldown = true; setTimeout(() => wCooldown = false, 800);
+  if (e.deltaY > 0) navigateY(currY + 1);
+  else              navigateY(currY - 1);
+}, { passive:true });
+
+let ty0 = 0;
+let tScrollY0 = 0; 
+
+window.addEventListener('touchstart', e => {
+  ty0 = e.touches[0].clientY;
+  const panel = document.getElementById('text-panel');
+  tScrollY0 = panel ? panel.scrollTop : 0;
+}, { passive:true });
+
+window.addEventListener('touchend', e => {
+  if (isTransiting) return;
+
+  const dy = ty0 - e.changedTouches[0].clientY; 
+  if (Math.abs(dy) < 40) return;
+
+  const panel = document.getElementById('text-panel');
+  const inPanel = e.target.closest('#text-panel');
+
+  if (inPanel && panel) {
+    const atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 8;
+    const atTop    = panel.scrollTop < 8;
+
+    if (dy > 0 && atBottom && dy > 90) {
+      navigateY(currY + 1);
+      return;
+    }
+    if (dy < 0 && atTop && Math.abs(dy) > 90) {
+      navigateY(currY - 1);
+      return;
+    }
+    return;
+  }
+
+  if (dy > 0) navigateY(currY + 1);
+  else        navigateY(currY - 1);
+});
+
+window.addEventListener('keydown', e => {
+  if(e.key==='ArrowDown') navigateY(currY+1);    
+  if(e.key==='ArrowUp')   navigateY(currY-1);    
+  if(e.key==='ArrowLeft') navigateX(-1);         
+  if(e.key==='ArrowRight')navigateX(1);          
+});
+
+document.getElementById('brand-home').addEventListener('click', () => navigateY(0));
+
+function showGallery() {
+  const overlay = document.getElementById('gallery-overlay');
+  if (overlay) {
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden','false');
+    const closeBtn = document.getElementById('close-gallery');
+    if (closeBtn) closeBtn.focus();
+  }
+}
+
+function hideGallery() {
+  const overlay = document.getElementById('gallery-overlay');
+  if (overlay) {
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden','true');
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideGallery();
+});
+
+const galleryOverlay = document.getElementById('gallery-overlay');
+const closeGalleryButton = document.getElementById('close-gallery');
+if (galleryOverlay) {
+  galleryOverlay.addEventListener('click', e => {
+    if (e.target === galleryOverlay) hideGallery();
+  });
+}
+if (closeGalleryButton) {
+  closeGalleryButton.addEventListener('click', hideGallery);
+}
+
+updateTopNav(0);
+renderText(0, 0);
+
+const mobDrawer   = document.getElementById('mob-drawer');
+const mobBurger   = document.getElementById('mob-burger');
+const mobDrawerBg = document.getElementById('mob-drawer-bg');
+const mobDrawerBtns = document.querySelectorAll('.mob-drawer-btn');
+const mobBtnInicio   = document.getElementById('mob-btn-inicio');
+const mobBtnContacto = document.getElementById('mob-btn-contacto');
+
+function openDrawer() {
+  mobDrawer.classList.add('open');
+  mobDrawer.setAttribute('aria-hidden', 'false');
+  mobBurger.classList.add('open');
+  mobBurger.setAttribute('aria-expanded', 'true');
+}
+function closeDrawer() {
+  mobDrawer.classList.remove('open');
+  mobDrawer.setAttribute('aria-hidden', 'true');
+  mobBurger.classList.remove('open');
+  mobBurger.setAttribute('aria-expanded', 'false');
+}
+
+mobBurger.addEventListener('click', () => {
+  mobDrawer.classList.contains('open') ? closeDrawer() : openDrawer();
+});
+mobDrawerBg.addEventListener('click', closeDrawer);
+
+mobDrawerBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    closeDrawer();
+    navigateY(parseInt(btn.dataset.y));
+  });
+});
+
+if (mobBtnInicio)   mobBtnInicio.addEventListener('click', () => navigateY(0));
+if (mobBtnContacto) mobBtnContacto.addEventListener('click', () => navigateY(4));
+
+const bootEl = document.getElementById('boot');
+const bootLines = document.getElementById('boot-lines');
+const BOOT_DATA = [
+  'INICIALIZANDO MOTOR ESTRUCTURAL',
+  'CARGANDO GEOMETRÍAS X / Y / Z',
+  'MODO PLANIMETRÍA — ACTIVO',
+  'SISTEMA EN LÍNEA',
+  'BIENVENIDO.',
+];
+let bootDone = false;  
+
+function typeLine(text, cb) {
+  const div = document.createElement('div');
+  div.className = 'bline';
+  bootLines.appendChild(div);
+  let i = 0;
+  const iv = setInterval(() => {
+    if (bootDone) { clearInterval(iv); cb(); return; }
+    i++; div.innerHTML = `<span class="acc">&gt;</span> ` + text.slice(0,i);
+    if (i >= text.length) { clearInterval(iv); setTimeout(cb,120); }
+  }, 10);
+}
+
+function runBoot(idx) {
+  if (!bootEl) return;
+  if (bootDone || idx >= BOOT_DATA.length) { 
+    bootDone = true;
+    bootEl.classList.add('hide');  
+    setTimeout(() => { if (bootEl.parentNode) bootEl.remove(); }, 600);  
+    triggerTacticalGlitch(400);  
+    return; 
+  }
+  typeLine(BOOT_DATA[idx], () => runBoot(idx+1));
+}
+
+bootEl.addEventListener('click', () => bootDone = true);
+runBoot(0);  
+
+})();
+</script>
+</body>
+</html>
